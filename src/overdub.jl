@@ -316,6 +316,24 @@ function overdub_pass!(reflection::Reflection,
                             end)
     end
 
+    #=== mark all `llvmcall`s as nooverdub ===#
+    # TODO: this only works for: `Intrinsics.llvmcall` and not `Core.Intrinsics.llvmcall`
+    # since there is a getproperty call in the way.
+    # TODO: Need to fix for `istaggingenabled == true`
+    if !iskwfunc && !istaggingenabled
+        insert_statements!(overdubbed_code, overdubbed_codelocs,
+                            (x, i) -> begin
+                                if Base.Meta.isexpr(x, :call) &&
+                                  is_ir_element(x.args[1], GlobalRef(Core.Intrinsics, :llvmcall), overdubbed_code)
+                                    return 1
+                                end
+                                return nothing
+                            end,
+                            (x, i) -> begin
+                                [Expr(:call, Expr(:nooverdub, GlobalRef(Core.Intrinsics, :llvmcall)), x.args[2:end]...)]
+                            end)
+    end
+
     #=== untag all `foreigncall` SSAValue/SlotNumber arguments if tagging is enabled ===#
 
     if istaggingenabled && !iskwfunc

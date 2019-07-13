@@ -633,7 +633,11 @@ callback()
 
 println("done (took ", time() - before_time, " seconds)")
 
+#############################################################################################
 # Test overdubbing of a call overload invoke
+
+print("   running CtxCallOverload test...")
+before_time = time()
 
 using LinearAlgebra
 
@@ -663,3 +667,38 @@ let d = Dense(3,3)
     data = rand(3)
     Cassette.overdub(CtxCallOverload(), d, data)
 end
+
+println("done (took ", time() - before_time, " seconds)")
+
+#############################################################################################
+
+print("   running LLVMCallCtx test...")
+before_time = time()
+using Cassette
+Cassette.@context LLVMCallCtx
+
+# This overdub does nothing
+@noinline function Cassette.overdub(ctx::LLVMCallCtx, f, args...)
+    if Cassette.canrecurse(ctx, f, args...)
+        Cassette.recurse(ctx, f, args...)
+    else
+        Cassette.fallback(ctx, f, args...)
+    end
+end
+
+import Core.Intrinsics
+function llvm_sin(x::Float64)
+    # Needs fix for Core.Intrinsics.llvmcall
+    Intrinsics.llvmcall(
+        (
+            """declare double @llvm.sin.f64(double)""",
+            """%2 = call double @llvm.sin.f64(double %0)
+               ret double %2"""
+        ),
+        Float64, Tuple{Float64}, x
+    )
+end
+
+Cassette.@overdub LLVMCallCtx() llvm_sin(4.0)
+
+println("done (took ", time() - before_time, " seconds)")
